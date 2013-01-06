@@ -48,7 +48,7 @@ EXPORT_SYMBOL(msm_vol_ctl);
 static struct snd_kcontrol_new snd_msm_controls[];
 
 char snddev_name[AUDIO_DEV_CTL_MAX_DEV][44];
-#define MSM_MAX_VOLUME 0x2000
+#define MSM_MAX_VOLUME 0x3999
 #define MSM_VOLUME_STEP ((MSM_MAX_VOLUME+17)/100) /* 17 added to avoid
 						      more deviation */
 #define LOOPBACK_ENABLE         0x1
@@ -137,7 +137,7 @@ static int msm_v_volume_info(struct snd_kcontrol *kcontrol,
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
 	uinfo->count = 2; /* Volume */
 	uinfo->value.integer.min = 0;
-	uinfo->value.integer.max = 100;
+	uinfo->value.integer.max = 65532;
 	return 0;
 }
 
@@ -161,11 +161,11 @@ static int msm_volume_info(struct snd_kcontrol *kcontrol,
 				struct snd_ctl_elem_info *uinfo)
 {
 	uinfo->type = SNDRV_CTL_ELEM_TYPE_INTEGER;
-	uinfo->count = 3; /* Volume and 10-base multiply factor*/
+	uinfo->count = 2; /* Volume and 10-base multiply factor*/
 	uinfo->value.integer.min = 0;
 
 	/* limit the muliply factor to 4 decimal digit */
-	uinfo->value.integer.max = 1000000;
+	uinfo->value.integer.max = 65532;
 	return 0;
 }
 static int msm_volume_get(struct snd_kcontrol *kcontrol,
@@ -185,10 +185,11 @@ static int msm_volume_put(struct snd_kcontrol *kcontrol,
 	u32 session_mask = 0;
 
 
-	if (factor > 10000)
-		return -EINVAL;
+	//if (factor > 10000)
+	//	return -EINVAL;
 
-	if ((volume < 0) || (volume/factor > 100))
+	//if ((volume < 0) || (volume/factor > 100))
+	if ((volume < 0) || (volume > 100))
 		return -EINVAL;
 
 	volume = (MSM_VOLUME_STEP * volume);

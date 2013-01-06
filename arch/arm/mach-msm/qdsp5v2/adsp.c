@@ -311,7 +311,7 @@ int __msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 	while (((ctrl_word = readl(info->write_ctrl)) &
 		ADSP_RTOS_WRITE_CTRL_WORD_READY_M) !=
 		ADSP_RTOS_WRITE_CTRL_WORD_READY_V) {
-		if (cnt > 50) {
+		if (cnt > 100) {
 			MM_ERR("timeout waiting for DSP write ready\n");
 			ret_status = -EIO;
 			goto fail;
@@ -348,7 +348,7 @@ int __msm_adsp_write(struct msm_adsp_module *module, unsigned dsp_queue_addr,
 	while ((readl(info->write_ctrl) &
 		ADSP_RTOS_WRITE_CTRL_WORD_MUTEX_M) ==
 		ADSP_RTOS_WRITE_CTRL_WORD_MUTEX_NAVAIL_V) {
-		if (cnt > 2500) {
+		if (cnt > 5000) {
 			MM_ERR("timeout waiting for adsp ack\n");
 			ret_status = -EIO;
 			goto fail;
@@ -964,7 +964,7 @@ static int msm_adsp_probe(struct platform_device *pdev)
 	}
 
 	adsp_info.init_info_ptr = kzalloc(
-		(sizeof(struct adsp_rtos_mp_mtoa_init_info_type)), GFP_KERNEL);
+		(sizeof(struct adsp_rtos_mp_mtoa_s_type)), GFP_KERNEL);
 	if (!adsp_info.init_info_ptr)
 		return -ENOMEM;
 

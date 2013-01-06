@@ -210,7 +210,7 @@ static void lpa_listner(u32 evt_id, union auddev_evt_data *evt_payload,
 					disabled but POPP gain will be retained
 					as the old one which result
 					in lower volume*/
-					audio->vol_pan.volume = 0x2000;
+					audio->vol_pan.volume = 0x3999;
 					audpp_dsp_set_vol_pan(
 						audio->dec_id,
 						&audio->vol_pan, POPP);
