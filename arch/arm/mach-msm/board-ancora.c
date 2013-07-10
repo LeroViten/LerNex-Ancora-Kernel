@@ -1930,8 +1930,8 @@ static struct platform_device amp_i2c_gpio_device = {
 #ifdef CONFIG_MACH_ANCORA_TMO
 static struct snd_set_ampgain init_ampgain[] = {
 	[0] = {
-		.in1_gain = 2,
-		.in2_gain = 2,
+		.in1_gain = 5,
+		.in2_gain = 5,
 		.hp_att = 31,
 		.hp_gainup = 0,
 		.sp_att = 31,
