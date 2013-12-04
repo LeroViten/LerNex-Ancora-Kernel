@@ -3674,6 +3674,8 @@ static __devinit int wm8962_i2c_probe(struct i2c_client *i2c,
 				     &soc_codec_dev_wm8962, &wm8962_dai, 1);
 	if (ret < 0)
 		goto err_regmap;
+		
+	regcache_cache_only(wm8962->regmap, true);
 
 	/* The drivers should power up as needed */
 	regulator_bulk_disable(ARRAY_SIZE(wm8962->supplies), wm8962->supplies);
