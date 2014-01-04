@@ -14,7 +14,6 @@
 	.section .init.text,"ax"
 	.global kernel_entry
 kernel_entry:
-
 	/* Start the show */
 	lddpc   pc, kernel_start_addr
 

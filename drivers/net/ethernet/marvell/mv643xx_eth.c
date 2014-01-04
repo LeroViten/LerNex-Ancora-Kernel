@@ -1279,7 +1279,6 @@ static void mib_counters_update(struct mv643xx_eth_private *mp)
 static void mib_counters_timer_wrapper(unsigned long _mp)
 {
 	struct mv643xx_eth_private *mp = (void *)_mp;
-
 	mib_counters_update(mp);
 	mod_timer(&mp->mib_counters_timer, jiffies + 30 * HZ);
 }
@@ -2368,7 +2367,7 @@ static int mv643xx_eth_open(struct net_device *dev)
 		}
 		mp->int_mask |= INT_TX_END_0 << i;
 	}
-	
+
 	add_timer(&mp->mib_counters_timer);
 	port_start(mp);
 

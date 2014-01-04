@@ -1298,7 +1298,6 @@ restart:
 				/* Mark the file as being 'closed' */
 				state->state = 0;
 				break;
-			
 			case -NFS4ERR_ADMIN_REVOKED:
 			case -NFS4ERR_STALE_STATEID:
 			case -NFS4ERR_BAD_STATEID:
@@ -1482,7 +1481,6 @@ static int nfs4_recovery_handle_error(struct nfs_client *clp, int error)
 			set_bit(NFS4CLNT_SESSION_RESET, &clp->cl_state);
 			/* Zero session reset errors */
 			break;
-		
 		default:
 			return error;
 	}
@@ -1727,7 +1725,6 @@ static void nfs4_set_lease_expired(struct nfs_client *clp, int status)
 		break;
 
 	case -EKEYEXPIRED:
-		
 	case -NFS4ERR_NOT_SAME: /* FixMe: implement recovery
 				 * in nfs4_exchange_id */
 	default:

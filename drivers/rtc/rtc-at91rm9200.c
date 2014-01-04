@@ -161,7 +161,7 @@ static int at91_rtc_setalarm(struct device *dev, struct rtc_wkalrm *alrm)
 	at91_rtc_decodetime(AT91_RTC_TIMR, AT91_RTC_CALR, &tm);
 
 	at91_alarm_year = tm.tm_year;
-	
+
 	tm.tm_mon = alrm->time.tm_mon;
 	tm.tm_mday = alrm->time.tm_mday;
 	tm.tm_hour = alrm->time.tm_hour;

@@ -321,7 +321,7 @@ int ata_tport_add(struct device *parent,
  */
 static int noop(int x) { return x; }
 
-#define ata_link_show_linkspeed(field, format)				\
+#define ata_link_show_linkspeed(field, format)			        \
 static ssize_t								\
 show_ata_link_##field(struct device *dev,				\
 		      struct device_attribute *attr, char *buf)		\
@@ -338,6 +338,7 @@ static DEVICE_ATTR(field, S_IRUGO, show_ata_link_##field, NULL)
 ata_link_linkspeed_attr(hw_sata_spd_limit, fls);
 ata_link_linkspeed_attr(sata_spd_limit, fls);
 ata_link_linkspeed_attr(sata_spd, noop);
+
 
 static DECLARE_TRANSPORT_CLASS(ata_link_class,
 		"ata_link", NULL, NULL, NULL);

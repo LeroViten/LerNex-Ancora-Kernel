@@ -770,7 +770,7 @@ void rt2x00mac_flush(struct ieee80211_hw *hw, bool drop)
 {
 	struct rt2x00_dev *rt2x00dev = hw->priv;
 	struct data_queue *queue;
-	
+
 	if (!test_bit(DEVICE_STATE_PRESENT, &rt2x00dev->flags))
 		return;
 

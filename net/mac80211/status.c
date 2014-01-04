@@ -182,7 +182,7 @@ static void ieee80211_frame_acked(struct sta_info *sta, struct sk_buff *skb)
 	struct ieee80211_mgmt *mgmt = (void *) skb->data;
 	struct ieee80211_local *local = sta->local;
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
-	
+
 	if (local->hw.flags & IEEE80211_HW_REPORTS_TX_ACK_STATUS)
 		sta->last_rx = jiffies;
 

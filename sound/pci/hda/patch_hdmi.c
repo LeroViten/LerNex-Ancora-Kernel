@@ -1302,11 +1302,11 @@ static int generic_hdmi_init(struct hda_codec *codec)
 {
 	struct hdmi_spec *spec = codec->spec;
 	int pin_idx;
-	
+
 	for (pin_idx = 0; pin_idx < spec->num_pins; pin_idx++) {
 		struct hdmi_spec_per_pin *per_pin = &spec->pins[pin_idx];
 		hda_nid_t pin_nid = per_pin->pin_nid;
-		
+
 		hdmi_init_pin(codec, pin_nid);
 		snd_hda_jack_detect_enable(codec, pin_nid, pin_nid);
 	}

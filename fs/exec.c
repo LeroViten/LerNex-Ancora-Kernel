@@ -2041,7 +2041,6 @@ static int __get_dumpable(unsigned long mm_flags)
  * test against SUID_DUMP_USER rather than treating it as a boolean
  * value.
  */
-
 int get_dumpable(struct mm_struct *mm)
 {
 	return __get_dumpable(mm->flags);

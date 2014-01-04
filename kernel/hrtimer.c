@@ -1351,7 +1351,7 @@ retry:
 	 *
 	 * We need to prevent that we loop forever in the hrtimer
 	 * interrupt routine. We give it 3 attempts to avoid
-	 * overreacting on some spurious event.
+	 '* overreacting on some spurious event.
 	 *
 	 * Acquire base lock for updating the offsets and retrieving
 	 * the current time.

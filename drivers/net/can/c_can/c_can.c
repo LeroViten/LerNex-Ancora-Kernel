@@ -766,7 +766,7 @@ static int c_can_do_rx_poll(struct net_device *dev, int quota)
 				quota--;
 				continue;
 			}
-			
+
 			if (msg_ctrl_save & IF_MCONT_EOB)
 				return num_rx_pkts;
 

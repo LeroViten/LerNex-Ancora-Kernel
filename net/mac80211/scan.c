@@ -258,7 +258,7 @@ static bool ieee80211_prep_hw_scan(struct ieee80211_local *local)
 	struct cfg80211_scan_request *req = local->scan_req;
 	enum ieee80211_band band;
 	int i, ielen, n_chans;
-	
+
 	if (test_bit(SCAN_HW_CANCELLED, &local->scanning))
 		return false;
 
@@ -846,7 +846,7 @@ void ieee80211_scan_cancel(struct ieee80211_local *local)
 	mutex_lock(&local->mtx);
 	if (!local->scan_req)
 		goto out;
-	
+
 	/*
 	 * We have a scan running and the driver already reported completion,
 	 * but the worker hasn't run yet or is stuck on the mutex - mark it as
@@ -854,10 +854,10 @@ void ieee80211_scan_cancel(struct ieee80211_local *local)
 	 */
 	if (test_bit(SCAN_HW_SCANNING, &local->scanning) &&
 	    test_bit(SCAN_COMPLETED, &local->scanning)) {
-	        set_bit(SCAN_HW_CANCELLED, &local->scanning);
-	        goto out;
+		set_bit(SCAN_HW_CANCELLED, &local->scanning);
+		goto out;
 	}
-		
+
 	if (test_bit(SCAN_HW_SCANNING, &local->scanning)) {
 		/*
 		 * Make sure that __ieee80211_scan_completed doesn't trigger a

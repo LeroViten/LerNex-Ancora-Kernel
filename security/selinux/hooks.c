@@ -3757,18 +3757,19 @@ static int selinux_skb_peerlbl_sid(struct sk_buff *skb, u16 family, u32 *sid)
  *
  * If @skb_sid is valid then the user:role:type information from @sk_sid is
  * combined with the MLS information from @skb_sid in order to create
- * @conn_sid. If @skb_sid is not valid then then @conn_sid is simply a copy
- * of @sk_sid. Returns zero on success, negative values on failure.
+ * @conn_sid.  If @skb_sid is not valid then then @conn_sid is simply a copy
+ * of @sk_sid.  Returns zero on success, negative values on failure.
  *
  */
 static int selinux_conn_sid(u32 sk_sid, u32 skb_sid, u32 *conn_sid)
 {
 	int err = 0;
-	
+
 	if (skb_sid != SECSID_NULL)
 		err = security_sid_mls_copy(sk_sid, skb_sid, conn_sid);
 	else
 		*conn_sid = sk_sid;
+
 	return err;
 }
 
@@ -4651,22 +4652,22 @@ static unsigned int selinux_ip_output(struct sk_buff *skb,
 	sk = skb->sk;
 	if (sk) {
 		struct sk_security_struct *sksec;
-		
+
 		if (sk->sk_state == TCP_LISTEN)
 			/* if the socket is the listening state then this
 			 * packet is a SYN-ACK packet which means it needs to
 			 * be labeled based on the connection/request_sock and
-			 * not the parent socket. unfortunately, we can't
+			 * not the parent socket.  unfortunately, we can't
 			 * lookup the request_sock yet as it isn't queued on
 			 * the parent socket until after the SYN-ACK is sent.
 			 * the "solution" is to simply pass the packet as-is
 			 * as any IP option based labeling should be copied
 			 * from the initial connection request (in the IP
-			 * layer). it is far from ideal, but until we get a
+			 * layer).  it is far from ideal, but until we get a
 			 * security label in the packet itself this is the
 			 * best we can do. */
 			return NF_ACCEPT;
-			
+
 		/* standard practice, label using the parent socket */
 		sksec = sk->sk_security;
 		sid = sksec->sid;
@@ -4772,13 +4773,13 @@ static unsigned int selinux_ip_postroute(struct sk_buff *skb, int ifindex,
 		}
 	} else if (sk->sk_state == TCP_LISTEN) {
 		/* Locally generated packet but the associated socket is in the
-		 * listening state which means this is a SYN-ACK packet. In
+		 * listening state which means this is a SYN-ACK packet.  In
 		 * this particular case the correct security label is assigned
 		 * to the connection/request_sock but unfortunately we can't
 		 * query the request_sock as it isn't queued on the parent
 		 * socket until after the SYN-ACK packet is sent; the only
 		 * viable choice is to regenerate the label like we do in
-		 * selinux_inet_conn_request(). See also selinux_ip_output()
+		 * selinux_inet_conn_request().  See also selinux_ip_output()
 		 * for similar problems. */
 		u32 skb_sid;
 		struct sk_security_struct *sksec = sk->sk_security;

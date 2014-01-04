@@ -312,7 +312,6 @@ static int remove_ftrace_list_ops(struct ftrace_ops **list,
 
 static int __register_ftrace_function(struct ftrace_ops *ops)
 {
-
 	if (FTRACE_WARN_ON(ops == &global_ops))
 		return -EINVAL;
 
@@ -345,7 +344,6 @@ static int __register_ftrace_function(struct ftrace_ops *ops)
 static int __unregister_ftrace_function(struct ftrace_ops *ops)
 {
 	int ret;
-
 
 	if (WARN_ON(!(ops->flags & FTRACE_OPS_FL_ENABLED)))
 		return -EBUSY;
@@ -1940,7 +1938,7 @@ static int ftrace_startup(struct ftrace_ops *ops, int command)
 
 	if (unlikely(ftrace_disabled))
 		return -ENODEV;
-		
+
 	ret = __register_ftrace_function(ops);
 	if (ret)
 		return ret;
@@ -1973,7 +1971,7 @@ static int ftrace_shutdown(struct ftrace_ops *ops, int command)
 
 	if (unlikely(ftrace_disabled))
 		return -ENODEV;
-		
+
 	ret = __unregister_ftrace_function(ops);
 	if (ret)
 		return ret;
@@ -2014,7 +2012,7 @@ static int ftrace_shutdown(struct ftrace_ops *ops, int command)
 		return 0;
 
 	ftrace_run_update_code(command);
-		return 0;
+	return 0;
 }
 
 static void ftrace_startup_sysctl(void)
@@ -3950,14 +3948,15 @@ device_initcall(ftrace_nodyn_init);
 static inline int ftrace_init_dyn_debugfs(struct dentry *d_tracer) { return 0; }
 static inline void ftrace_startup_enable(int command) { }
 /* Keep as macros so we do not need to define the commands */
-# define ftrace_startup(ops, command)				\
-	({							\
-		int ___ret = __register_ftrace_function(ops);	\
-		if (!___ret)					\
-			(ops)->flags |= FTRACE_OPS_FL_ENABLED;	\
-		___ret;
+# define ftrace_startup(ops, command)					\
+	({								\
+		int ___ret = __register_ftrace_function(ops);		\
+		if (!___ret)						\
+			(ops)->flags |= FTRACE_OPS_FL_ENABLED;		\
+		___ret;							\
 	})
 # define ftrace_shutdown(ops, command) __unregister_ftrace_function(ops)
+
 # define ftrace_startup_sysctl()	do { } while (0)
 # define ftrace_shutdown_sysctl()	do { } while (0)
 

@@ -810,7 +810,6 @@ int ipath_user_sdma_writev(struct ipath_devdata *dd,
 		const int mxp = 8;
 
 		ret = ipath_user_sdma_queue_pkts(dd, pq, &list, iov, dim, mxp);
-
 		if (ret <= 0)
 			goto done_unlock;
 		else {

@@ -1,4 +1,4 @@
-/* Copyright (c) 2012 Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2012 The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -324,15 +324,15 @@ static struct msm_bus_vectors cam_stereo_snapshot_vectors[] = {
 static struct msm_bus_paths cam_bus_client_config[] = {
 	{
 		ARRAY_SIZE(cam_init_vectors),
-		cam_zsl_vectors,
+		cam_init_vectors,
 	},
 	{
 		ARRAY_SIZE(cam_preview_vectors),
-		cam_zsl_vectors,
+		cam_preview_vectors,
 	},
 	{
 		ARRAY_SIZE(cam_video_vectors),
-		cam_zsl_vectors,
+		cam_video_vectors,
 	},
 	{
 		ARRAY_SIZE(cam_snapshot_vectors),
@@ -364,7 +364,7 @@ static struct msm_camera_device_platform_data msm_camera_csi_device_data[] = {
 		.is_vpe    = 1,
 		.cam_bus_scale_table = &cam_bus_client_pdata,
 		.ioclk = {
-			.vfe_clk_rate =	266667000,
+			.vfe_clk_rate =	228570000,
 		},
 	},
 	{

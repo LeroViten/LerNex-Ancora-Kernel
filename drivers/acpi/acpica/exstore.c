@@ -56,10 +56,11 @@ static acpi_status
 acpi_ex_store_object_to_index(union acpi_operand_object *val_desc,
 			      union acpi_operand_object *dest_desc,
 			      struct acpi_walk_state *walk_state);
+
 static acpi_status
 acpi_ex_store_direct_to_node(union acpi_operand_object *source_desc,
-			    struct acpi_namespace_node *node,
-			    struct acpi_walk_state *walk_state);
+			     struct acpi_namespace_node *node,
+			     struct acpi_walk_state *walk_state);
 
 /*******************************************************************************
  *
@@ -381,10 +382,10 @@ acpi_ex_store_object_to_index(union acpi_operand_object *source_desc,
  *              target object type then stored in the object.  This means
  *              that the target object type (for an initialized target) will
  *              not be changed by a store operation. A copy_object can change
- *		the target type, however.
+ *              the target type, however.
  *
- *		The implicit_conversion flag is set to NO/FALSE only when
- *		storing to an arg_x -- as per the rules of the ACPI spec.
+ *              The implicit_conversion flag is set to NO/FALSE only when
+ *              storing to an arg_x -- as per the rules of the ACPI spec.
  *
  *              Assumes parameters are already validated.
  *
@@ -425,7 +426,6 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 	/* Do the actual store operation */
 
 	switch (target_type) {
-
 	case ACPI_TYPE_INTEGER:
 	case ACPI_TYPE_STRING:
 	case ACPI_TYPE_BUFFER:
@@ -434,7 +434,7 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 		 * The simple data types all support implicit source operand
 		 * conversion before the store.
 		 */
-		 
+
 		if ((walk_state->opcode == AML_COPY_OP) || !implicit_conversion) {
 			/*
 			 * However, copy_object and Stores to arg_x do not perform
@@ -445,9 +445,9 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 							      walk_state);
 			break;
 		}
-		
+
 		/* Store with implicit source operand conversion support */
-		
+
 		status =
 		    acpi_ex_store_object_to_object(source_desc, target_desc,
 						   &new_desc, walk_state);
@@ -462,8 +462,8 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 			 * source_desc reference count is incremented by attach_object.
 			 *
 			 * Note: This may change the type of the node if an explicit
-			  * store has been performed such that the node/object type
-			  * has been changed.
+			 * store has been performed such that the node/object type
+			 * has been changed.
 			 */
 			status = acpi_ns_attach_object(node, new_desc,
 						       new_desc->common.type);
@@ -490,7 +490,7 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 		status = acpi_ex_write_data_to_field(source_desc, target_desc,
 						     &walk_state->result_obj);
 		break;
-		
+
 	default:
 		/*
 		 * No conversions for all other types. Directly store a copy of
@@ -510,6 +510,7 @@ acpi_ex_store_object_to_node(union acpi_operand_object *source_desc,
 
 	return_ACPI_STATUS(status);
 }
+
 /*******************************************************************************
  *
  * FUNCTION:    acpi_ex_store_direct_to_node

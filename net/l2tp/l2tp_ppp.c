@@ -354,7 +354,7 @@ static int pppol2tp_sendmsg(struct kiocb *iocb, struct socket *sock, struct msgh
 		kfree_skb(skb);
 		goto error_put_sess_tun;
 	}
-	
+
 	local_bh_disable();
 	l2tp_xmit_skb(session, skb, session->hdr_len);
 	local_bh_enable();

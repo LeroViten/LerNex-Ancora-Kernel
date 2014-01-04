@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -57,8 +57,7 @@ extern uint32_t SMSM_NUM_HOSTS;
 #define SMSM_PWRC              0x00000200
 #define SMSM_TIMEWAIT          0x00000400
 #define SMSM_TIMEINIT          0x00000800
-#define SMSM_PWRC_EARLY_EXIT   0x00001000
-#define SMSM_LTE_COEX_AWAKE    0x00001000
+#define SMSM_PROC_AWAKE        0x00001000
 #define SMSM_WFPI              0x00002000
 #define SMSM_SLEEP             0x00004000
 #define SMSM_SLEEPEXIT         0x00008000

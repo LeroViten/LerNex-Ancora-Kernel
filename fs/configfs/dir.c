@@ -68,7 +68,7 @@ static void configfs_d_iput(struct dentry * dentry,
 		 */
 		if (atomic_read(&sd->s_count) <= 2)
 			sd->s_dentry = NULL;
-			
+
 		spin_unlock(&configfs_dirent_lock);
 		configfs_put(sd);
 	}
@@ -439,7 +439,7 @@ static int configfs_attach_attr(struct configfs_dirent * sd, struct dentry * den
 	dentry->d_fsdata = configfs_get(sd);
 	sd->s_dentry = dentry;
 	spin_unlock(&configfs_dirent_lock);
-	
+
 	error = configfs_create(dentry, (attr->ca_mode & S_IALLUGO) | S_IFREG,
 				configfs_init_file);
 	if (error) {

@@ -509,7 +509,7 @@ static int read_exceptions(struct pstore *ps,
 	}
 
 	ps->current_area--;
-	
+
 	skip_metadata(ps);
 
 	return 0;

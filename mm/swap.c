@@ -87,8 +87,8 @@ static void put_compound_page(struct page *page)
 		if (put_page_testzero(page))
 			__put_compound_page(page);
 		return;
-	}	
-	
+	}
+
 	if (unlikely(PageTail(page))) {
 		/* __split_huge_page_refcount can run under us */
 		struct page *page_head = compound_trans_head(page);
@@ -174,7 +174,7 @@ bool __get_page_tail(struct page *page)
 	unsigned long flags;
 	bool got = false;
 	struct page *page_head;
-	
+
 	/*
 	 * If this is a hugetlbfs page it cannot be split under us.  Simply
 	 * increment refcount for the head page.

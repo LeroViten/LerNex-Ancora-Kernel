@@ -654,14 +654,14 @@ static int uio_mmap_physical(struct vm_area_struct *vma)
 	if (mi < 0)
 		return -EINVAL;
 	mem = idev->info->mem + mi;
-	
+
 	if (vma->vm_end - vma->vm_start > mem->size)
 		return -EINVAL;
 
 	vma->vm_flags |= VM_IO | VM_RESERVED;
 
 	vma->vm_page_prot = pgprot_noncached(vma->vm_page_prot);
-	
+
 	/*
 	 * We cannot use the vm_iomap_memory() helper here,
 	 * because vma->vm_pgoff is the map index we looked

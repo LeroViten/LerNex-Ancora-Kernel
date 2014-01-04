@@ -979,7 +979,7 @@ acpi_status acpi_ex_opcode_1A_0T_1R(struct acpi_walk_state *walk_state)
 						return_ACPI_STATUS
 						    (AE_AML_UNINITIALIZED_ELEMENT);
 					}
-					
+
 					acpi_ut_add_reference(return_desc);
 					break;
 
@@ -1008,7 +1008,7 @@ acpi_status acpi_ex_opcode_1A_0T_1R(struct acpi_walk_state *walk_state)
 					if (!return_desc) {
 						break;
 					}
-					
+
 					/*
 					 * June 2013:
 					 * buffer_fields/field_units require additional resolution
@@ -1018,7 +1018,7 @@ acpi_status acpi_ex_opcode_1A_0T_1R(struct acpi_walk_state *walk_state)
 					case ACPI_TYPE_LOCAL_REGION_FIELD:
 					case ACPI_TYPE_LOCAL_BANK_FIELD:
 					case ACPI_TYPE_LOCAL_INDEX_FIELD:
-					
+
 						status =
 						    acpi_ex_read_data_from_field
 						    (walk_state, return_desc,
@@ -1027,20 +1027,20 @@ acpi_status acpi_ex_opcode_1A_0T_1R(struct acpi_walk_state *walk_state)
 							goto cleanup;
 						}
 
-				return_desc = temp_desc;
+						return_desc = temp_desc;
+						break;
+
+					default:
+
+						/* Add another reference to the object */
+
+						acpi_ut_add_reference
+						    (return_desc);
+						break;
+					}
+				}
 				break;
 
-				default:
-				
-					/* Add another reference to the object */
-					
-					acpi_ut_add_reference
-					    (return_desc);
-					break;
-				}
-			}
-			break;
-			
 			default:
 				ACPI_ERROR((AE_INFO,
 					    "Unknown class in reference(%p) - 0x%2.2X",

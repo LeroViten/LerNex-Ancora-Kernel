@@ -5,7 +5,7 @@
  * Copyright (C) 2003-2004 Robert Schwebel, Benedikt Spranger
  * Copyright (C) 2003 Al Borchers (alborchers@steinerpoint.com)
  * Copyright (C) 2008 Nokia Corporation
- * Copyright (c) 2010-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2010-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -907,14 +907,13 @@ static void rmnet_smd_connect_work(struct work_struct *w)
 		 * Register platform driver to be notified in case SMD channels
 		 * later becomes ready to be opened.
 		 */
-		if (!dev->is_pdrv_used) {
-			ret = platform_driver_register(&dev->pdrv);
-			if (ret)
-				ERROR(cdev, "pdrv %s register failed %d\n",
-						dev->pdrv.driver.name, ret);
-			else
-				dev->is_pdrv_used = 1;
-		}
+		ret = platform_driver_register(&dev->pdrv);
+		if (ret)
+			ERROR(cdev, "Platform driver %s register failed %d\n",
+					dev->pdrv.driver.name, ret);
+		else
+			dev->is_pdrv_used = 1;
+
 		return;
 	}
 	wait_event(dev->smd_ctl.wait, test_bit(CH_OPENED,

@@ -251,7 +251,7 @@ static void dma_irq_callback(void *param)
 	default:
 		pr_err("in wrong DMA operation.\n");
 	}
-	
+
 	complete(dma_c);
 }
 

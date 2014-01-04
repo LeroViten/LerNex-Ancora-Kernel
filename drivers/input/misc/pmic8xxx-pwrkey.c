@@ -178,9 +178,21 @@ static int __devinit pmic8xxx_pwrkey_probe(struct platform_device *pdev)
 	pwrkey->key_press_irq = key_press_irq;
 	pwrkey->key_release_irq = key_release_irq;
 	pwrkey->pwr = pwr;
-	pwrkey->press = false;
 
 	platform_set_drvdata(pdev, pwrkey);
+
+	/* check power key status during boot */
+	err = pm8xxx_read_irq_stat(pdev->dev.parent, key_press_irq);
+	if (err < 0) {
+		dev_err(&pdev->dev, "reading irq status failed\n");
+		goto unreg_input_dev;
+	}
+	pwrkey->press = !!err;
+
+	if (pwrkey->press) {
+		input_report_key(pwrkey->pwr, KEY_POWER, 1);
+		input_sync(pwrkey->pwr);
+	}
 
 	err = request_any_context_irq(key_press_irq, pwrkey_press_irq,
 		IRQF_TRIGGER_RISING, "pmic8xxx_pwrkey_press", pwrkey);
@@ -242,7 +254,13 @@ static struct platform_driver pmic8xxx_pwrkey_driver = {
 		.pm	= &pm8xxx_pwr_key_pm_ops,
 	},
 };
-module_platform_driver(pmic8xxx_pwrkey_driver);
+
+static int __devinit pmic8xxx_pwrkey_init(void)
+{
+	return platform_driver_register(&pmic8xxx_pwrkey_driver);
+}
+
+subsys_initcall(pmic8xxx_pwrkey_init);
 
 MODULE_ALIAS("platform:pmic8xxx_pwrkey");
 MODULE_DESCRIPTION("PMIC8XXX Power Key driver");

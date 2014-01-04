@@ -1,7 +1,7 @@
 /* arch/arm/mach-msm/smd.c
  *
  * Copyright (C) 2007 Google, Inc.
- * Copyright (c) 2008-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2008-2012, The Linux Foundation. All rights reserved.
  * Author: Brian Swetland <swetland@google.com>
  *
  * This software is licensed under the terms of the GNU General Public
@@ -35,6 +35,7 @@
 #include <linux/wakelock.h>
 #include <linux/notifier.h>
 #include <linux/sort.h>
+#include <linux/suspend.h>
 #include <mach/msm_smd.h>
 #include <mach/msm_iomap.h>
 #include <mach/system.h>
@@ -124,6 +125,7 @@ struct interrupt_config_item {
 	uint32_t out_bit_pos;
 	void __iomem *out_base;
 	uint32_t out_offset;
+	int irq_id;
 };
 
 struct interrupt_config {
@@ -377,24 +379,6 @@ static inline void smd_write_intr(unsigned int val,
 	__raw_writel(val, addr);
 }
 
-#ifdef CONFIG_WCNSS
-static inline void wakeup_v1_riva(void)
-{
-	/*
-	 * workaround hack for RIVA v1 hardware bug
-	 * trigger GPIO 40 to wake up RIVA from power collaspe
-	 * not to be sent to customers
-	 */
-	if (SOCINFO_VERSION_MAJOR(socinfo_get_version()) == 1) {
-		__raw_writel(0x0, MSM_TLMM_BASE + 0x1284);
-		__raw_writel(0x2, MSM_TLMM_BASE + 0x1284);
-	}
-	/* end workaround */
-}
-#else
-static inline void wakeup_v1_riva(void) {}
-#endif
-
 static inline void notify_modem_smd(void)
 {
 	static const struct interrupt_config_item *intr
@@ -441,7 +425,6 @@ static inline void notify_wcnss_smd(void)
 {
 	static const struct interrupt_config_item *intr
 		= &private_intr_config[SMD_WCNSS].smd;
-	wakeup_v1_riva();
 
 	if (intr->out_base) {
 		++interrupt_stats[SMD_WCNSS].smd_out_config_count;
@@ -511,7 +494,6 @@ static inline void notify_wcnss_smsm(void)
 {
 	static const struct interrupt_config_item *intr
 		= &private_intr_config[SMD_WCNSS].smsm;
-	wakeup_v1_riva();
 
 	if (intr->out_base) {
 		++interrupt_stats[SMD_WCNSS].smsm_out_config_count;
@@ -571,6 +553,26 @@ static void notify_other_smsm(uint32_t smsm_entry, uint32_t notify_mask)
 		smsm_cb_snapshot(0);
 	}
 }
+
+static int smsm_pm_notifier(struct notifier_block *nb,
+				unsigned long event, void *unused)
+{
+	switch (event) {
+	case PM_SUSPEND_PREPARE:
+		smsm_change_state(SMSM_APPS_STATE, SMSM_PROC_AWAKE, 0);
+		break;
+
+	case PM_POST_SUSPEND:
+		smsm_change_state(SMSM_APPS_STATE, 0, SMSM_PROC_AWAKE);
+		break;
+	}
+	return NOTIFY_DONE;
+}
+
+static struct notifier_block smsm_pm_nb = {
+	.notifier_call = smsm_pm_notifier,
+	.priority = 0,
+};
 
 void smd_diag(void)
 {
@@ -801,17 +803,21 @@ static void smd_channel_probe_worker(struct work_struct *work)
  * @pid:       Processor ID of processor on edge
  * @local_ch:  Channel that belongs to processor @pid
  * @remote_ch: Other side of edge contained @pid
+ * @is_word_access_ch: Bool, is this a word aligned access channel
  *
  * Returns 0 for not on edge, 1 for found on edge
  */
-static int pid_is_on_edge(struct smd_shared_v2 *shared2,
+static int pid_is_on_edge(void *shared2,
 		uint32_t type, uint32_t pid,
-		struct smd_half_channel **local_ch,
-		struct smd_half_channel **remote_ch
+		void **local_ch,
+		void **remote_ch,
+		int is_word_access_ch
 		)
 {
 	int ret = 0;
 	struct edge_to_pid *edge;
+	void *ch0;
+	void *ch1;
 
 	*local_ch = 0;
 	*remote_ch = 0;
@@ -819,15 +825,23 @@ static int pid_is_on_edge(struct smd_shared_v2 *shared2,
 	if (!shared2 || (type >= ARRAY_SIZE(edge_to_pids)))
 		return 0;
 
+	if (is_word_access_ch) {
+		ch0 = &((struct smd_shared_v2_word_access *)(shared2))->ch0;
+		ch1 = &((struct smd_shared_v2_word_access *)(shared2))->ch1;
+	} else {
+		ch0 = &((struct smd_shared_v2 *)(shared2))->ch0;
+		ch1 = &((struct smd_shared_v2 *)(shared2))->ch1;
+	}
+
 	edge = &edge_to_pids[type];
 	if (edge->local_pid != edge->remote_pid) {
 		if (pid == edge->local_pid) {
-			*local_ch = &shared2->ch0;
-			*remote_ch = &shared2->ch1;
+			*local_ch = ch0;
+			*remote_ch = ch1;
 			ret = 1;
 		} else if (pid == edge->remote_pid) {
-			*local_ch = &shared2->ch1;
-			*remote_ch = &shared2->ch0;
+			*local_ch = ch1;
+			*remote_ch = ch0;
 			ret = 1;
 		}
 	}
@@ -879,14 +893,29 @@ const char *smd_pid_to_subsystem(uint32_t pid)
 }
 EXPORT_SYMBOL(smd_pid_to_subsystem);
 
-static void smd_reset_edge(struct smd_half_channel *ch, unsigned new_state)
+static void smd_reset_edge(void *void_ch, unsigned new_state,
+				int is_word_access_ch)
 {
-	if (ch->state != SMD_SS_CLOSED) {
-		ch->state = new_state;
-		ch->fDSR = 0;
-		ch->fCTS = 0;
-		ch->fCD = 0;
-		ch->fSTATE = 1;
+	if (is_word_access_ch) {
+		struct smd_half_channel_word_access *ch =
+			(struct smd_half_channel_word_access *)(void_ch);
+		if (ch->state != SMD_SS_CLOSED) {
+			ch->state = new_state;
+			ch->fDSR = 0;
+			ch->fCTS = 0;
+			ch->fCD = 0;
+			ch->fSTATE = 1;
+		}
+	} else {
+		struct smd_half_channel *ch =
+			(struct smd_half_channel *)(void_ch);
+		if (ch->state != SMD_SS_CLOSED) {
+			ch->state = new_state;
+			ch->fDSR = 0;
+			ch->fCTS = 0;
+			ch->fCD = 0;
+			ch->fSTATE = 1;
+		}
 	}
 }
 
@@ -894,10 +923,11 @@ static void smd_channel_reset_state(struct smd_alloc_elm *shared,
 		unsigned new_state, unsigned pid)
 {
 	unsigned n;
-	struct smd_shared_v2 *shared2;
+	void *shared2;
 	uint32_t type;
-	struct smd_half_channel *local_ch;
-	struct smd_half_channel *remote_ch;
+	void *local_ch;
+	void *remote_ch;
+	int is_word_access;
 
 	for (n = 0; n < SMD_CHANNELS; n++) {
 		if (!shared[n].ref_count)
@@ -906,12 +936,19 @@ static void smd_channel_reset_state(struct smd_alloc_elm *shared,
 			continue;
 
 		type = SMD_CHANNEL_TYPE(shared[n].type);
-		shared2 = smem_alloc(SMEM_SMD_BASE_ID + n, sizeof(*shared2));
+		is_word_access = is_word_access_ch(type);
+		if (is_word_access)
+			shared2 = smem_alloc(SMEM_SMD_BASE_ID + n,
+				sizeof(struct smd_shared_v2_word_access));
+		else
+			shared2 = smem_alloc(SMEM_SMD_BASE_ID + n,
+				sizeof(struct smd_shared_v2));
 		if (!shared2)
 			continue;
 
-		if (pid_is_on_edge(shared2, type, pid, &local_ch, &remote_ch))
-			smd_reset_edge(local_ch, new_state);
+		if (pid_is_on_edge(shared2, type, pid, &local_ch, &remote_ch,
+							is_word_access))
+			smd_reset_edge(local_ch, new_state, is_word_access);
 
 		/*
 		 * ModemFW is in the same subsystem as ModemSW, but has
@@ -919,8 +956,8 @@ static void smd_channel_reset_state(struct smd_alloc_elm *shared,
 		 */
 		if (pid == SMSM_MODEM &&
 				pid_is_on_edge(shared2, type, SMD_MODEM_Q6_FW,
-				 &local_ch, &remote_ch))
-			smd_reset_edge(local_ch, new_state);
+				 &local_ch, &remote_ch, is_word_access))
+			smd_reset_edge(local_ch, new_state, is_word_access);
 	}
 }
 
@@ -2135,6 +2172,56 @@ void smd_disable_read_intr(smd_channel_t *ch)
 }
 EXPORT_SYMBOL(smd_disable_read_intr);
 
+/**
+ * Enable/disable receive interrupts for the remote processor used by a
+ * particular channel.
+ * @ch:      open channel handle to use for the edge
+ * @mask:    1 = mask interrupts; 0 = unmask interrupts
+ * @returns: 0 for success; < 0 for failure
+ *
+ * Note that this enables/disables all interrupts from the remote subsystem for
+ * all channels.  As such, it should be used with care and only for specific
+ * use cases such as power-collapse sequencing.
+ */
+int smd_mask_receive_interrupt(smd_channel_t *ch, bool mask)
+{
+	struct irq_chip *irq_chip;
+	struct irq_data *irq_data;
+	struct interrupt_config_item *int_cfg;
+
+	if (!ch)
+		return -EINVAL;
+
+	if (ch->type >= ARRAY_SIZE(edge_to_pids))
+		return -ENODEV;
+
+	int_cfg = &private_intr_config[edge_to_pids[ch->type].remote_pid].smd;
+
+	if (int_cfg->irq_id < 0)
+		return -ENODEV;
+
+	irq_chip = irq_get_chip(int_cfg->irq_id);
+	if (!irq_chip)
+		return -ENODEV;
+
+	irq_data = irq_get_irq_data(int_cfg->irq_id);
+	if (!irq_data)
+		return -ENODEV;
+
+	if (mask) {
+		SMx_POWER_INFO("SMD Masking interrupts from %s\n",
+				edge_to_pids[ch->type].subsys_name);
+		irq_chip->irq_mask(irq_data);
+	} else {
+		SMx_POWER_INFO("SMD Unmasking interrupts from %s\n",
+				edge_to_pids[ch->type].subsys_name);
+		irq_chip->irq_unmask(irq_data);
+	}
+
+	return 0;
+}
+EXPORT_SYMBOL(smd_mask_receive_interrupt);
+
 int smd_wait_until_readable(smd_channel_t *ch, int bytes)
 {
 	return -1;
@@ -2220,13 +2307,17 @@ EXPORT_SYMBOL(smd_tiocmset);
 
 int smd_is_pkt_avail(smd_channel_t *ch)
 {
+	unsigned long flags;
+
 	if (!ch || !ch->is_pkt_ch)
 		return -EINVAL;
 
 	if (ch->current_packet)
 		return 1;
 
+	spin_lock_irqsave(&smd_lock, flags);
 	update_packet_state(ch);
+	spin_unlock_irqrestore(&smd_lock, flags);
 
 	return ch->current_packet ? 1 : 0;
 }
@@ -2475,6 +2566,12 @@ static int smsm_init(void)
 		return i;
 
 	wmb();
+
+	smsm_pm_notifier(&smsm_pm_nb, PM_POST_SUSPEND, NULL);
+	i = register_pm_notifier(&smsm_pm_nb);
+	if (i)
+		pr_err("%s: power state notif error %d\n", __func__, i);
+
 	return 0;
 }
 
@@ -3094,6 +3191,7 @@ int smd_core_init(void)
 			flags, "smd_dev", 0);
 	if (r < 0)
 		return r;
+	interrupt_stats[SMD_MODEM].smd_interrupt_id = INT_A9_M2A_0;
 	r = enable_irq_wake(INT_A9_M2A_0);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3105,6 +3203,7 @@ int smd_core_init(void)
 		free_irq(INT_A9_M2A_0, 0);
 		return r;
 	}
+	interrupt_stats[SMD_MODEM].smsm_interrupt_id = INT_A9_M2A_5;
 	r = enable_irq_wake(INT_A9_M2A_5);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3122,6 +3221,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_Q6].smd_interrupt_id = INT_ADSP_A11;
 	r = request_irq(INT_ADSP_A11_SMSM, smsm_dsp_irq_handler,
 			flags, "smsm_dev", smsm_dsp_irq_handler);
 	if (r < 0) {
@@ -3131,6 +3231,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_Q6].smsm_interrupt_id = INT_ADSP_A11_SMSM;
 	r = enable_irq_wake(INT_ADSP_A11);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3156,6 +3257,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_DSPS].smd_interrupt_id = INT_DSPS_A11;
 	r = enable_irq_wake(INT_DSPS_A11);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3174,6 +3276,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_WCNSS].smd_interrupt_id = INT_WCNSS_A11;
 	r = enable_irq_wake(INT_WCNSS_A11);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3191,6 +3294,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_WCNSS].smsm_interrupt_id = INT_WCNSS_A11_SMSM;
 	r = enable_irq_wake(INT_WCNSS_A11_SMSM);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3211,6 +3315,7 @@ int smd_core_init(void)
 		return r;
 	}
 
+	interrupt_stats[SMD_DSPS].smsm_interrupt_id = INT_DSPS_A11_SMSM;
 	r = enable_irq_wake(INT_DSPS_A11_SMSM);
 	if (r < 0)
 		pr_err("smd_core_init: "
@@ -3248,8 +3353,10 @@ static int intr_init(struct interrupt_config_item *private_irq,
 			);
 	if (ret < 0) {
 		platform_irq->irq_id = ret;
+		private_irq->irq_id = ret;
 	} else {
 		platform_irq->irq_id = irq_id;
+		private_irq->irq_id = irq_id;
 		ret_wake = enable_irq_wake(irq_id);
 		if (ret_wake < 0) {
 			pr_err("smd: enable_irq_wake failed on %s",
@@ -3338,6 +3445,8 @@ int smd_core_platform_init(struct platform_device *pdev)
 			goto intr_failed;
 		}
 
+		interrupt_stats[cfg->irq_config_id].smd_interrupt_id
+						 = cfg->smd_int.irq_id;
 		/* only init smsm structs if this edge supports smsm */
 		if (cfg->smsm_int.irq_id)
 			ret = intr_init(
@@ -3353,6 +3462,9 @@ int smd_core_platform_init(struct platform_device *pdev)
 			goto intr_failed;
 		}
 
+		if (cfg->smsm_int.irq_id)
+			interrupt_stats[cfg->irq_config_id].smsm_interrupt_id
+						 = cfg->smsm_int.irq_id;
 		if (cfg->subsys_name)
 			strlcpy(edge_to_pids[cfg->edge].subsys_name,
 				cfg->subsys_name, SMD_MAX_CH_NAME_LEN);
@@ -3441,7 +3553,7 @@ static int restart_notifier_cb(struct notifier_block *this,
 static struct restart_notifier_block restart_notifiers[] = {
 	{SMD_MODEM, "modem", .nb.notifier_call = restart_notifier_cb},
 	{SMD_Q6, "lpass", .nb.notifier_call = restart_notifier_cb},
-	{SMD_WCNSS, "riva", .nb.notifier_call = restart_notifier_cb},
+	{SMD_WCNSS, "wcnss", .nb.notifier_call = restart_notifier_cb},
 	{SMD_DSPS, "dsps", .nb.notifier_call = restart_notifier_cb},
 	{SMD_MODEM, "gss", .nb.notifier_call = restart_notifier_cb},
 };

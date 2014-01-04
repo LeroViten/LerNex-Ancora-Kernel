@@ -3,7 +3,7 @@
  *
  * Copyright (C) 2010 Samsung Electronics Co.Ltd
  * Author: Joonyoung Shim <jy0922.shim@samsung.com>
- * Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute  it and/or modify it
  * under  the terms of  the GNU General  Public License as published by the
@@ -1389,8 +1389,7 @@ static int mxt_save_objects(struct mxt_data *data)
 	}
 	data->t9_max_reportid = t9_object->max_reportid;
 	data->t9_min_reportid = t9_object->max_reportid -
-					(t9_object->num_report_ids *
-					(t9_object->instances + 1)) + 1;
+					t9_object->num_report_ids + 1;
 
 	if (data->pdata->key_codes) {
 		t15_object = mxt_get_object(data, MXT_TOUCH_KEYARRAY_T15);
@@ -1399,8 +1398,7 @@ static int mxt_save_objects(struct mxt_data *data)
 		else {
 			data->t15_max_reportid = t15_object->max_reportid;
 			data->t15_min_reportid = t15_object->max_reportid -
-					(t15_object->num_report_ids *
-					(t15_object->instances + 1)) + 1;
+						t15_object->num_report_ids + 1;
 		}
 	}
 
@@ -1411,8 +1409,7 @@ static int mxt_save_objects(struct mxt_data *data)
 	else {
 		data->t42_max_reportid = t42_object->max_reportid;
 		data->t42_min_reportid = t42_object->max_reportid -
-					(t42_object->num_report_ids *
-					(t42_object->instances + 1)) + 1;
+					t42_object->num_report_ids + 1;
 	}
 
 	return 0;
@@ -2198,6 +2195,7 @@ static int mxt_suspend(struct device *dev)
 	}
 
 	mutex_unlock(&input_dev->mutex);
+	mxt_release_all(data);
 
 	/* put regulators in low power mode */
 	error = mxt_regulator_lpm(data, true);
@@ -2222,7 +2220,9 @@ static int mxt_resume(struct device *dev)
 		dev_err(dev, "failed to enter high power mode\n");
 		return error;
 	}
-
+	mxt_write_object(data, MXT_GEN_COMMAND_T6,
+			MXT_COMMAND_RESET, 1);
+	msleep(MXT_RESET_TIME);
 	mutex_lock(&input_dev->mutex);
 
 	if (input_dev->users) {
@@ -2232,14 +2232,6 @@ static int mxt_resume(struct device *dev)
 			mutex_unlock(&input_dev->mutex);
 			return error;
 		}
-	}
-
-	/* calibrate */
-	if (data->pdata->need_calibration) {
-		error = mxt_write_object(data, MXT_GEN_COMMAND_T6,
-					MXT_COMMAND_CALIBRATE, 1);
-		if (error < 0)
-			dev_dbg(dev, "sending calibration command failed\n");
 	}
 
 	mutex_unlock(&input_dev->mutex);
@@ -2458,9 +2450,6 @@ static int mxt_parse_dt(struct device *dev, struct mxt_platform_data *pdata)
 			return -EINVAL;
 	}
 
-	/* need calibration during wakeup? */
-	pdata->need_calibration = of_property_read_bool(np,
-					"atmel,need-calibration");
 	/* config array size */
 	pdata->config_array_size = 0;
 	temp = NULL;
@@ -2787,7 +2776,7 @@ static const struct i2c_device_id mxt_id[] = {
 	{ }
 };
 MODULE_DEVICE_TABLE(i2c, mxt_id);
-#ifdef CONFIG_OF
+#ifdef OF_CONFIG
 static struct of_device_id mxt_match_table[] = {
 	{ .compatible = "atmel,mxt-ts",},
 	{ },

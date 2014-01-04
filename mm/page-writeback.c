@@ -1073,7 +1073,7 @@ static unsigned long dirty_poll_interval(unsigned long dirty,
 }
 
 static unsigned long bdi_max_pause(struct backing_dev_info *bdi,
-				  unsigned long bdi_dirty)
+				   unsigned long bdi_dirty)
 {
 	unsigned long bw = bdi->avg_write_bandwidth;
 	unsigned long t;

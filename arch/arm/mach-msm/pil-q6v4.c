@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -116,7 +116,7 @@ static int pil_q6v4_power_up(struct device *dev)
 	int err;
 	struct q6v4_data *drv = dev_get_drvdata(dev);
 
-	err = regulator_set_voltage(drv->vreg, 375000, 375000);
+	err = regulator_set_voltage(drv->vreg, 743750, 743750);
 	if (err) {
 		dev_err(dev, "Failed to set regulator's voltage step.\n");
 		return err;
@@ -328,7 +328,13 @@ static int pil_q6v4_shutdown_trusted(struct pil_desc *pil)
 	struct pil_q6v4_pdata *pdata = pil->dev->platform_data;
 
 	/* Make sure bus port is halted */
-	msm_bus_axi_porthalt(pdata->bus_port);
+	if (strcmp("modem_fw", pdata->name)) {
+		msm_bus_axi_porthalt(pdata->bus_port);
+
+		/* Halt fw bus port incase of modem */
+		if (pdata->fw_bus_port)
+			msm_bus_axi_porthalt(pdata->fw_bus_port);
+	}
 
 	ret = pas_shutdown(pdata->pas_id);
 	if (ret)

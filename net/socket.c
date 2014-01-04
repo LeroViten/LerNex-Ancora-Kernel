@@ -1903,7 +1903,7 @@ struct used_address {
 };
 
 static int copy_msghdr_from_user(struct msghdr *kmsg,
-				struct msghdr __user *umsg)
+				 struct msghdr __user *umsg)
 {
 	if (copy_from_user(kmsg, umsg, sizeof(struct msghdr)))
 		return -EFAULT;

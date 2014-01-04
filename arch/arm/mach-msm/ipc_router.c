@@ -1,4 +1,4 @@
-/* Copyright (c) 2011-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2011-2013, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -36,6 +36,7 @@
 
 #include "ipc_router.h"
 #include "modem_notifier.h"
+#include "msm_ipc_router_security.h"
 
 enum {
 	SMEM_LOG = 1U << 0,
@@ -96,6 +97,13 @@ static DEFINE_MUTEX(control_ports_lock);
 static struct list_head local_ports[LP_HASH_SIZE];
 static DEFINE_MUTEX(local_ports_lock);
 
+/*
+ * Server info is organized as a hash table. The server's service ID is
+ * used to index into the hash table. The instance ID of most of the servers
+ * are 1 or 2. The service IDs are well distributed compared to the instance
+ * IDs and hence choosing service ID to index into this hash table optimizes
+ * the hash table operations like add, lookup, destroy.
+ */
 #define SRV_HASH_SIZE 32
 static struct list_head server_list[SRV_HASH_SIZE];
 static DEFINE_MUTEX(server_list_lock);
@@ -104,6 +112,7 @@ static wait_queue_head_t newserver_wait;
 struct msm_ipc_server {
 	struct list_head list;
 	struct msm_ipc_port_name name;
+	int synced_sec_rule;
 	struct list_head server_port_list;
 };
 
@@ -122,6 +131,7 @@ struct msm_ipc_router_remote_port {
 	wait_queue_head_t quota_wait;
 	uint32_t tx_quota_cnt;
 	struct mutex quota_lock;
+	void *sec_rule;
 };
 
 struct msm_ipc_router_xprt_info {
@@ -174,19 +184,12 @@ static void do_read_data(struct work_struct *work);
 static LIST_HEAD(xprt_info_list);
 static DEFINE_MUTEX(xprt_info_list_lock);
 
-DECLARE_COMPLETION(msm_ipc_remote_router_up);
 static DECLARE_COMPLETION(msm_ipc_local_router_up);
 #define IPC_ROUTER_INIT_TIMEOUT (10 * HZ)
 
 static uint32_t next_port_id;
 static DEFINE_MUTEX(next_port_id_lock);
 static struct workqueue_struct *msm_ipc_router_workqueue;
-
-enum {
-	CLIENT_PORT,
-	SERVER_PORT,
-	CONTROL_PORT,
-};
 
 enum {
 	DOWN,
@@ -544,6 +547,7 @@ static struct msm_ipc_router_remote_port *msm_ipc_router_create_remote_port(
 	rport_ptr->port_id = port_id;
 	rport_ptr->node_id = node_id;
 	rport_ptr->restart_state = RESTART_NORMAL;
+	rport_ptr->sec_rule = NULL;
 	rport_ptr->tx_quota_cnt = 0;
 	init_waitqueue_head(&rport_ptr->quota_wait);
 	mutex_init(&rport_ptr->quota_lock);
@@ -580,6 +584,20 @@ static void msm_ipc_router_destroy_remote_port(
 	return;
 }
 
+/**
+ * msm_ipc_router_lookup_server() - Lookup server information
+ * @service: Service ID of the server info to be looked up.
+ * @instance: Instance ID of the server info to be looked up.
+ * @node_id: Node/Processor ID in which the server is hosted.
+ * @port_id: Port ID within the node in which the server is hosted.
+ *
+ * @return: If found Pointer to server structure, else NULL.
+ *
+ * Note1: Lock the server_list_lock before accessing this function.
+ * Note2: If the <node_id:port_id> are <0:0>, then the lookup is restricted
+ *        to <service:instance>. Used only when a client wants to send a
+ *        message to any QMI server.
+ */
 static struct msm_ipc_server *msm_ipc_router_lookup_server(
 				uint32_t service,
 				uint32_t instance,
@@ -588,30 +606,39 @@ static struct msm_ipc_server *msm_ipc_router_lookup_server(
 {
 	struct msm_ipc_server *server;
 	struct msm_ipc_server_port *server_port;
-	int key = (instance & (SRV_HASH_SIZE - 1));
+	int key = (service & (SRV_HASH_SIZE - 1));
 
-	mutex_lock(&server_list_lock);
 	list_for_each_entry(server, &server_list[key], list) {
 		if ((server->name.service != service) ||
 		    (server->name.instance != instance))
 			continue;
-		if ((node_id == 0) && (port_id == 0)) {
-			mutex_unlock(&server_list_lock);
+		if ((node_id == 0) && (port_id == 0))
 			return server;
-		}
 		list_for_each_entry(server_port, &server->server_port_list,
 				    list) {
 			if ((server_port->server_addr.node_id == node_id) &&
-			    (server_port->server_addr.port_id == port_id)) {
-				mutex_unlock(&server_list_lock);
+			    (server_port->server_addr.port_id == port_id))
 				return server;
-			}
 		}
 	}
-	mutex_unlock(&server_list_lock);
 	return NULL;
 }
 
+/**
+ * msm_ipc_router_create_server() - Add server info to hash table
+ * @service: Service ID of the server info to be created.
+ * @instance: Instance ID of the server info to be created.
+ * @node_id: Node/Processor ID in which the server is hosted.
+ * @port_id: Port ID within the node in which the server is hosted.
+ * @xprt_info: XPRT through which the node hosting the server is reached.
+ *
+ * @return: Pointer to server structure on success, else NULL.
+ *
+ * This function adds the server info to the hash table. If the same
+ * server(i.e. <service_id:instance_id>) is hosted in different nodes,
+ * they are maintained as list of "server_port" under "server" structure.
+ * Note: Lock the server_list_lock before accessing this function.
+ */
 static struct msm_ipc_server *msm_ipc_router_create_server(
 					uint32_t service,
 					uint32_t instance,
@@ -621,9 +648,8 @@ static struct msm_ipc_server *msm_ipc_router_create_server(
 {
 	struct msm_ipc_server *server = NULL;
 	struct msm_ipc_server_port *server_port;
-	int key = (instance & (SRV_HASH_SIZE - 1));
+	int key = (service & (SRV_HASH_SIZE - 1));
 
-	mutex_lock(&server_list_lock);
 	list_for_each_entry(server, &server_list[key], list) {
 		if ((server->name.service == service) &&
 		    (server->name.instance == instance))
@@ -632,12 +658,12 @@ static struct msm_ipc_server *msm_ipc_router_create_server(
 
 	server = kmalloc(sizeof(struct msm_ipc_server), GFP_KERNEL);
 	if (!server) {
-		mutex_unlock(&server_list_lock);
 		pr_err("%s: Server allocation failed\n", __func__);
 		return NULL;
 	}
 	server->name.service = service;
 	server->name.instance = instance;
+	server->synced_sec_rule = 0;
 	INIT_LIST_HEAD(&server->server_port_list);
 	list_add_tail(&server->list, &server_list[key]);
 
@@ -648,7 +674,6 @@ create_srv_port:
 			list_del(&server->list);
 			kfree(server);
 		}
-		mutex_unlock(&server_list_lock);
 		pr_err("%s: Server Port allocation failed\n", __func__);
 		return NULL;
 	}
@@ -656,11 +681,22 @@ create_srv_port:
 	server_port->server_addr.port_id = port_id;
 	server_port->xprt_info = xprt_info;
 	list_add_tail(&server_port->list, &server->server_port_list);
-	mutex_unlock(&server_list_lock);
 
 	return server;
 }
 
+/**
+ * msm_ipc_router_destroy_server() - Remove server info from hash table
+ * @server: Server info to be removed.
+ * @node_id: Node/Processor ID in which the server is hosted.
+ * @port_id: Port ID within the node in which the server is hosted.
+ *
+ * This function removes the server_port identified using <node_id:port_id>
+ * from the server structure. If the server_port list under server structure
+ * is empty after removal, then remove the server structure from the server
+ * hash table.
+ * Note: Lock the server_list_lock before accessing this function.
+ */
 static void msm_ipc_router_destroy_server(struct msm_ipc_server *server,
 					  uint32_t node_id, uint32_t port_id)
 {
@@ -669,7 +705,6 @@ static void msm_ipc_router_destroy_server(struct msm_ipc_server *server,
 	if (!server)
 		return;
 
-	mutex_lock(&server_list_lock);
 	list_for_each_entry(server_port, &server->server_port_list, list) {
 		if ((server_port->server_addr.node_id == node_id) &&
 		    (server_port->server_addr.port_id == port_id))
@@ -683,7 +718,6 @@ static void msm_ipc_router_destroy_server(struct msm_ipc_server *server,
 		list_del(&server->list);
 		kfree(server);
 	}
-	mutex_unlock(&server_list_lock);
 	return;
 }
 
@@ -763,7 +797,7 @@ static int msm_ipc_router_send_control_msg(
 	return ret;
 }
 
-static int msm_ipc_router_send_server_list(
+static int msm_ipc_router_send_server_list(uint32_t node_id,
 		struct msm_ipc_router_xprt_info *xprt_info)
 {
 	union rr_control_msg ctl;
@@ -778,15 +812,14 @@ static int msm_ipc_router_send_server_list(
 
 	ctl.cmd = IPC_ROUTER_CTRL_CMD_NEW_SERVER;
 
-	mutex_lock(&server_list_lock);
 	for (i = 0; i < SRV_HASH_SIZE; i++) {
 		list_for_each_entry(server, &server_list[i], list) {
 			ctl.srv.service = server->name.service;
 			ctl.srv.instance = server->name.instance;
 			list_for_each_entry(server_port,
 					    &server->server_port_list, list) {
-				if (server_port->server_addr.node_id ==
-				    xprt_info->remote_node_id)
+				if (server_port->server_addr.node_id !=
+				    node_id)
 					continue;
 
 				ctl.srv.node_id =
@@ -798,7 +831,6 @@ static int msm_ipc_router_send_server_list(
 			}
 		}
 	}
-	mutex_unlock(&server_list_lock);
 
 	return 0;
 }
@@ -1164,14 +1196,179 @@ static void modem_reset_cleanup(struct msm_ipc_router_xprt_info *xprt_info)
 	msm_ipc_cleanup_routing_table(xprt_info);
 }
 
+/**
+ * sync_sec_rule() - Synchrnoize the security rule into the server structure
+ * @server: Server structure where the rule has to be synchronized.
+ * @rule: Security tule to be synchronized.
+ *
+ * This function is used to update the server structure with the security
+ * rule configured for the <service:instance> corresponding to that server.
+ */
+static void sync_sec_rule(struct msm_ipc_server *server, void *rule)
+{
+	struct msm_ipc_server_port *server_port;
+	struct msm_ipc_router_remote_port *rport_ptr = NULL;
+
+	list_for_each_entry(server_port, &server->server_port_list, list) {
+		rport_ptr = msm_ipc_router_lookup_remote_port(
+				server_port->server_addr.node_id,
+				server_port->server_addr.port_id);
+		if (!rport_ptr)
+			continue;
+		rport_ptr->sec_rule = rule;
+	}
+	server->synced_sec_rule = 1;
+}
+
+/**
+ * msm_ipc_sync_sec_rule() - Sync the security rule to the service
+ * @service: Service for which the rule has to be synchronized.
+ * @instance: Instance for which the rule has to be synchronized.
+ * @rule: Security rule to be synchronized.
+ *
+ * This function is used to syncrhonize the security rule with the server
+ * hash table, if the user-space script configures the rule after the service
+ * has come up. This function is used to synchronize the security rule to a
+ * specific service and optionally a specific instance.
+ */
+void msm_ipc_sync_sec_rule(uint32_t service, uint32_t instance, void *rule)
+{
+	int key = (service & (SRV_HASH_SIZE - 1));
+	struct msm_ipc_server *server;
+
+	mutex_lock(&server_list_lock);
+	list_for_each_entry(server, &server_list[key], list) {
+		if (server->name.service != service)
+			continue;
+
+		if (server->name.instance != instance &&
+		    instance != ALL_INSTANCE)
+			continue;
+
+		/*
+		 * If the rule applies to all instances and if the specific
+		 * instance of a service has a rule synchronized already,
+		 * do not apply the rule for that specific instance.
+		 */
+		if (instance == ALL_INSTANCE && server->synced_sec_rule)
+			continue;
+
+		sync_sec_rule(server, rule);
+	}
+	mutex_unlock(&server_list_lock);
+}
+
+/**
+ * msm_ipc_sync_default_sec_rule() - Default security rule to all services
+ * @rule: Security rule to be synchronized.
+ *
+ * This function is used to syncrhonize the security rule with the server
+ * hash table, if the user-space script configures the rule after the service
+ * has come up. This function is used to synchronize the security rule that
+ * applies to all services, if the concerned service do not have any rule
+ * defined.
+ */
+void msm_ipc_sync_default_sec_rule(void *rule)
+{
+	int key;
+	struct msm_ipc_server *server;
+
+	mutex_lock(&server_list_lock);
+	for (key = 0; key < SRV_HASH_SIZE; key++) {
+		list_for_each_entry(server, &server_list[key], list) {
+			if (server->synced_sec_rule)
+				continue;
+
+			sync_sec_rule(server, rule);
+		}
+	}
+	mutex_unlock(&server_list_lock);
+}
+
+static int process_hello_msg(struct msm_ipc_router_xprt_info *xprt_info,
+			     struct rr_header *hdr)
+{
+	int i, rc = 0;
+	union rr_control_msg ctl;
+	struct msm_ipc_routing_table_entry *rt_entry;
+
+	if (!hdr)
+		return -EINVAL;
+
+	RR("o HELLO NID %d\n", hdr->src_node_id);
+
+	xprt_info->remote_node_id = hdr->src_node_id;
+	/*
+	 * Find the entry from Routing Table corresponding to Node ID.
+	 * Under SSR, an entry will be found. When the system boots up
+	 * for the 1st time, an entry will not be found and hence allocate
+	 * an entry. Update the entry with the Node ID that it corresponds
+	 * to and the XPRT through which it can be reached.
+	 */
+	mutex_lock(&routing_table_lock);
+	rt_entry = lookup_routing_table(hdr->src_node_id);
+	if (!rt_entry) {
+		rt_entry = alloc_routing_table_entry(hdr->src_node_id);
+		if (!rt_entry) {
+			mutex_unlock(&routing_table_lock);
+			pr_err("%s: rt_entry allocation failed\n", __func__);
+			return -ENOMEM;
+		}
+		add_routing_table_entry(rt_entry);
+	}
+	mutex_lock(&rt_entry->lock);
+	rt_entry->neighbor_node_id = xprt_info->remote_node_id;
+	rt_entry->xprt_info = xprt_info;
+	mutex_unlock(&rt_entry->lock);
+	mutex_unlock(&routing_table_lock);
+
+	/* Cleanup any remote ports, if the node is coming out of reset */
+	msm_ipc_cleanup_remote_port_info(xprt_info->remote_node_id);
+
+	/* Send a reply HELLO message */
+	memset(&ctl, 0, sizeof(ctl));
+	ctl.cmd = IPC_ROUTER_CTRL_CMD_HELLO;
+	rc = msm_ipc_router_send_control_msg(xprt_info, &ctl);
+	if (rc < 0) {
+		pr_err("%s: Error sending reply HELLO message\n", __func__);
+		return rc;
+	}
+	xprt_info->initialized = 1;
+
+	/*
+	 * Send list of servers from the local node and from nodes
+	 * outside the mesh network in which this XPRT is part of.
+	 */
+	mutex_lock(&server_list_lock);
+	mutex_lock(&routing_table_lock);
+	for (i = 0; i < RT_HASH_SIZE; i++) {
+		list_for_each_entry(rt_entry, &routing_table[i], list) {
+			if ((rt_entry->node_id != IPC_ROUTER_NID_LOCAL) &&
+			    (!rt_entry->xprt_info ||
+			     (rt_entry->xprt_info->xprt->link_id ==
+			      xprt_info->xprt->link_id)))
+				continue;
+			rc = msm_ipc_router_send_server_list(rt_entry->node_id,
+							     xprt_info);
+			if (rc < 0) {
+				mutex_unlock(&routing_table_lock);
+				mutex_unlock(&server_list_lock);
+				return rc;
+			}
+		}
+	}
+	mutex_unlock(&routing_table_lock);
+	mutex_unlock(&server_list_lock);
+	RR("HELLO message processed\n");
+	return rc;
+}
+
 static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 			       struct rr_packet *pkt)
 {
-	union rr_control_msg ctl;
 	union rr_control_msg *msg;
 	struct msm_ipc_router_remote_port *rport_ptr;
 	int rc = 0;
-	static uint32_t first = 1;
 	struct sk_buff *temp_ptr;
 	struct rr_header *hdr;
 	struct msm_ipc_server *server;
@@ -1197,43 +1394,9 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 
 	switch (msg->cmd) {
 	case IPC_ROUTER_CTRL_CMD_HELLO:
-		RR("o HELLO NID %d\n", hdr->src_node_id);
-		xprt_info->remote_node_id = hdr->src_node_id;
-
-		mutex_lock(&routing_table_lock);
-		rt_entry = lookup_routing_table(hdr->src_node_id);
-		if (!rt_entry) {
-			rt_entry = alloc_routing_table_entry(hdr->src_node_id);
-			if (!rt_entry) {
-				mutex_unlock(&routing_table_lock);
-				pr_err("%s: rt_entry allocation failed\n",
-					__func__);
-				return -ENOMEM;
-			}
-			add_routing_table_entry(rt_entry);
-		}
-		mutex_lock(&rt_entry->lock);
-		rt_entry->neighbor_node_id = xprt_info->remote_node_id;
-		rt_entry->xprt_info = xprt_info;
-		mutex_unlock(&rt_entry->lock);
-		mutex_unlock(&routing_table_lock);
-		msm_ipc_cleanup_remote_port_info(xprt_info->remote_node_id);
-
-		memset(&ctl, 0, sizeof(ctl));
-		ctl.cmd = IPC_ROUTER_CTRL_CMD_HELLO;
-		msm_ipc_router_send_control_msg(xprt_info, &ctl);
-
-		xprt_info->initialized = 1;
-
-		/* Send list of servers one at a time */
-		msm_ipc_router_send_server_list(xprt_info);
-
-		if (first) {
-			first = 0;
-			complete_all(&msm_ipc_remote_router_up);
-		}
-		RR("HELLO message processed\n");
+		rc = process_hello_msg(xprt_info, hdr);
 		break;
+
 	case IPC_ROUTER_CTRL_CMD_RESUME_TX:
 		RR("o RESUME_TX id=%d:%08x\n",
 		   msg->cli.node_id, msg->cli.port_id);
@@ -1280,6 +1443,7 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 		}
 		mutex_unlock(&routing_table_lock);
 
+		mutex_lock(&server_list_lock);
 		server = msm_ipc_router_lookup_server(msg->srv.service,
 						      msg->srv.instance,
 						      msg->srv.node_id,
@@ -1289,6 +1453,7 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 				msg->srv.service, msg->srv.instance,
 				msg->srv.node_id, msg->srv.port_id, xprt_info);
 			if (!server) {
+				mutex_unlock(&server_list_lock);
 				pr_err("%s: Server Create failed\n", __func__);
 				return -ENOMEM;
 			}
@@ -1300,9 +1465,15 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 				if (!rport_ptr)
 					pr_err("%s: Remote port create "
 					       "failed\n", __func__);
+				else
+					rport_ptr->sec_rule =
+						msm_ipc_get_security_rule(
+						msg->srv.service,
+						msg->srv.instance);
 			}
 			wake_up(&newserver_wait);
 		}
+		mutex_unlock(&server_list_lock);
 
 		relay_msg(xprt_info, pkt);
 		post_control_ports(pkt);
@@ -1310,6 +1481,7 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 	case IPC_ROUTER_CTRL_CMD_REMOVE_SERVER:
 		RR("o REMOVE_SERVER service=%08x:%d\n",
 		   msg->srv.service, msg->srv.instance);
+		mutex_lock(&server_list_lock);
 		server = msm_ipc_router_lookup_server(msg->srv.service,
 						      msg->srv.instance,
 						      msg->srv.node_id,
@@ -1321,6 +1493,7 @@ static int process_control_msg(struct msm_ipc_router_xprt_info *xprt_info,
 			relay_msg(xprt_info, pkt);
 			post_control_ports(pkt);
 		}
+		mutex_unlock(&server_list_lock);
 		break;
 	case IPC_ROUTER_CTRL_CMD_REMOVE_CLIENT:
 		RR("o REMOVE_CLIENT id=%d:%08x\n",
@@ -1505,11 +1678,13 @@ int msm_ipc_router_register_server(struct msm_ipc_port *port_ptr,
 	if (name->addrtype != MSM_IPC_ADDR_NAME)
 		return -EINVAL;
 
+	mutex_lock(&server_list_lock);
 	server = msm_ipc_router_lookup_server(name->addr.port_name.service,
 					      name->addr.port_name.instance,
 					      IPC_ROUTER_NID_LOCAL,
 					      port_ptr->this_port.port_id);
 	if (server) {
+		mutex_unlock(&server_list_lock);
 		pr_err("%s: Server already present\n", __func__);
 		return -EINVAL;
 	}
@@ -1520,6 +1695,7 @@ int msm_ipc_router_register_server(struct msm_ipc_port *port_ptr,
 					      port_ptr->this_port.port_id,
 					      NULL);
 	if (!server) {
+		mutex_unlock(&server_list_lock);
 		pr_err("%s: Server Creation failed\n", __func__);
 		return -EINVAL;
 	}
@@ -1529,6 +1705,7 @@ int msm_ipc_router_register_server(struct msm_ipc_port *port_ptr,
 	ctl.srv.instance = server->name.instance;
 	ctl.srv.node_id = IPC_ROUTER_NID_LOCAL;
 	ctl.srv.port_id = port_ptr->this_port.port_id;
+	mutex_unlock(&server_list_lock);
 	broadcast_ctl_msg(&ctl);
 	spin_lock_irqsave(&port_ptr->port_lock, flags);
 	port_ptr->type = SERVER_PORT;
@@ -1559,11 +1736,13 @@ int msm_ipc_router_unregister_server(struct msm_ipc_port *port_ptr)
 		return -EINVAL;
 	}
 
+	mutex_lock(&server_list_lock);
 	server = msm_ipc_router_lookup_server(port_ptr->port_name.service,
 					      port_ptr->port_name.instance,
 					      port_ptr->this_port.node_id,
 					      port_ptr->this_port.port_id);
 	if (!server) {
+		mutex_unlock(&server_list_lock);
 		pr_err("%s: Server lookup failed\n", __func__);
 		return -ENODEV;
 	}
@@ -1573,9 +1752,10 @@ int msm_ipc_router_unregister_server(struct msm_ipc_port *port_ptr)
 	ctl.srv.instance = server->name.instance;
 	ctl.srv.node_id = IPC_ROUTER_NID_LOCAL;
 	ctl.srv.port_id = port_ptr->this_port.port_id;
-	broadcast_ctl_msg(&ctl);
 	msm_ipc_router_destroy_server(server, port_ptr->this_port.node_id,
 				      port_ptr->this_port.port_id);
+	mutex_unlock(&server_list_lock);
+	broadcast_ctl_msg(&ctl);
 	spin_lock_irqsave(&port_ptr->port_lock, flags);
 	port_ptr->type = CLIENT_PORT;
 	spin_unlock_irqrestore(&port_ptr->port_lock, flags);
@@ -1590,6 +1770,7 @@ static int loopback_data(struct msm_ipc_port *src,
 	struct rr_header *hdr;
 	struct msm_ipc_port *port_ptr;
 	struct rr_packet *pkt;
+	int ret_len;
 
 	if (!data) {
 		pr_err("%s: Invalid pkt pointer\n", __func__);
@@ -1605,6 +1786,7 @@ static int loopback_data(struct msm_ipc_port *src,
 	head_skb = skb_peek(pkt->pkt_fragment_q);
 	if (!head_skb) {
 		pr_err("%s: pkt_fragment_q is empty\n", __func__);
+		release_pkt(pkt);
 		return -EINVAL;
 	}
 	hdr = (struct rr_header *)skb_push(head_skb, IPC_ROUTER_HDR_SIZE);
@@ -1635,11 +1817,12 @@ static int loopback_data(struct msm_ipc_port *src,
 	mutex_lock(&port_ptr->port_rx_q_lock);
 	wake_lock(&port_ptr->port_rx_wake_lock);
 	list_add_tail(&pkt->list, &port_ptr->port_rx_q);
+	ret_len = pkt->length;
 	wake_up(&port_ptr->port_rx_wait_q);
 	mutex_unlock(&port_ptr->port_rx_q_lock);
 	mutex_unlock(&local_ports_lock);
 
-	return pkt->length;
+	return ret_len;
 }
 
 static int msm_ipc_router_write_pkt(struct msm_ipc_port *src,
@@ -1774,15 +1957,16 @@ int msm_ipc_router_send_to(struct msm_ipc_port *src,
 		dst_node_id = dest->addr.port_addr.node_id;
 		dst_port_id = dest->addr.port_addr.port_id;
 	} else if (dest->addrtype == MSM_IPC_ADDR_NAME) {
+		mutex_lock(&server_list_lock);
 		server = msm_ipc_router_lookup_server(
 					dest->addr.port_name.service,
 					dest->addr.port_name.instance,
 					0, 0);
 		if (!server) {
+			mutex_unlock(&server_list_lock);
 			pr_err("%s: Destination not reachable\n", __func__);
 			return -ENODEV;
 		}
-		mutex_lock(&server_list_lock);
 		server_port = list_first_entry(&server->server_port_list,
 					       struct msm_ipc_server_port,
 					       list);
@@ -1801,6 +1985,15 @@ int msm_ipc_router_send_to(struct msm_ipc_port *src,
 	if (!rport_ptr) {
 		pr_err("%s: Could not create remote port\n", __func__);
 		return -ENOMEM;
+	}
+
+	if (src->check_send_permissions) {
+		ret = src->check_send_permissions(rport_ptr->sec_rule);
+		if (ret <= 0) {
+			pr_err("%s: permission failure for %s\n",
+				__func__, current->comm);
+			return -EPERM;
+		}
 	}
 
 	pkt = create_pkt(data);
@@ -1943,19 +2136,30 @@ int msm_ipc_router_close_port(struct msm_ipc_port *port_ptr)
 			RR("x REMOVE_SERVER Name=%d:%08x Id=%d:%08x\n",
 			   msg.srv.service, msg.srv.instance,
 			   msg.srv.node_id, msg.srv.port_id);
-		} else if (port_ptr->type == CLIENT_PORT) {
-			msg.cmd = IPC_ROUTER_CTRL_CMD_REMOVE_CLIENT;
-			msg.cli.node_id = port_ptr->this_port.node_id;
-			msg.cli.port_id = port_ptr->this_port.port_id;
-			RR("x REMOVE_CLIENT id=%d:%08x\n",
-			   msg.cli.node_id, msg.cli.port_id);
+			broadcast_ctl_msg(&msg);
+			broadcast_ctl_msg_locally(&msg);
 		}
+
+		/*
+		 * Server port could have been a client port earlier.
+		 * Send REMOVE_CLIENT message in either case.
+		 */
+		msg.cmd = IPC_ROUTER_CTRL_CMD_REMOVE_CLIENT;
+		msg.cli.node_id = port_ptr->this_port.node_id;
+		msg.cli.port_id = port_ptr->this_port.port_id;
+		RR("x REMOVE_CLIENT id=%d:%08x\n",
+		   msg.cli.node_id, msg.cli.port_id);
 		broadcast_ctl_msg(&msg);
 		broadcast_ctl_msg_locally(&msg);
 	} else if (port_ptr->type == CONTROL_PORT) {
 		mutex_lock(&control_ports_lock);
 		list_del(&port_ptr->list);
 		mutex_unlock(&control_ports_lock);
+	} else if (port_ptr->type == IRSC_PORT) {
+		mutex_lock(&local_ports_lock);
+		list_del(&port_ptr->list);
+		mutex_unlock(&local_ports_lock);
+		signal_irsc_completion();
 	}
 
 	mutex_lock(&port_ptr->port_rx_q_lock);
@@ -1966,6 +2170,7 @@ int msm_ipc_router_close_port(struct msm_ipc_port *port_ptr)
 	mutex_unlock(&port_ptr->port_rx_q_lock);
 
 	if (port_ptr->type == SERVER_PORT) {
+		mutex_lock(&server_list_lock);
 		server = msm_ipc_router_lookup_server(
 				port_ptr->port_name.service,
 				port_ptr->port_name.instance,
@@ -1975,6 +2180,7 @@ int msm_ipc_router_close_port(struct msm_ipc_port *port_ptr)
 			msm_ipc_router_destroy_server(server,
 				port_ptr->this_port.node_id,
 				port_ptr->this_port.port_id);
+		mutex_unlock(&server_list_lock);
 	}
 
 	wake_lock_destroy(&port_ptr->port_rx_wake_lock);
@@ -2039,27 +2245,24 @@ int msm_ipc_router_lookup_server_name(struct msm_ipc_port_name *srv_name,
 	mutex_lock(&server_list_lock);
 	if (!lookup_mask)
 		lookup_mask = 0xFFFFFFFF;
-	for (key = 0; key < SRV_HASH_SIZE; key++) {
-		list_for_each_entry(server, &server_list[key], list) {
-			if ((server->name.service != srv_name->service) ||
-			    ((server->name.instance & lookup_mask) !=
-				srv_name->instance))
-				continue;
+	key = (srv_name->service & (SRV_HASH_SIZE - 1));
+	list_for_each_entry(server, &server_list[key], list) {
+		if ((server->name.service != srv_name->service) ||
+		    ((server->name.instance & lookup_mask) !=
+			srv_name->instance))
+			continue;
 
-			list_for_each_entry(server_port,
-				&server->server_port_list, list) {
-				if (i < num_entries_in_array) {
-					srv_info[i].node_id =
+		list_for_each_entry(server_port,
+			&server->server_port_list, list) {
+			if (i < num_entries_in_array) {
+				srv_info[i].node_id =
 					  server_port->server_addr.node_id;
-					srv_info[i].port_id =
+				srv_info[i].port_id =
 					  server_port->server_addr.port_id;
-					srv_info[i].service =
-					  server->name.service;
-					srv_info[i].instance =
-					  server->name.instance;
-				}
-				i++;
+				srv_info[i].service = server->name.service;
+				srv_info[i].instance = server->name.instance;
 			}
+			i++;
 		}
 	}
 	mutex_unlock(&server_list_lock);
@@ -2094,7 +2297,7 @@ static int dump_routing_table(char *buf, int max)
 			mutex_lock(&rt_entry->lock);
 			i += scnprintf(buf + i, max - i,
 				       "Node Id: 0x%08x\n", rt_entry->node_id);
-			if (j == IPC_ROUTER_NID_LOCAL) {
+			if (rt_entry->node_id == IPC_ROUTER_NID_LOCAL) {
 				i += scnprintf(buf + i, max - i,
 				       "XPRT Name: Loopback\n");
 				i += scnprintf(buf + i, max - i,
@@ -2498,6 +2701,10 @@ static int __init msm_ipc_router_init(void)
 	ret = msm_ipc_router_init_sockets();
 	if (ret < 0)
 		pr_err("%s: Init sockets failed\n", __func__);
+
+	ret = msm_ipc_router_security_init();
+	if (ret < 0)
+		pr_err("%s: Security Init failed\n", __func__);
 
 	complete_all(&msm_ipc_local_router_up);
 	return ret;

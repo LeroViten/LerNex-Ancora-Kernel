@@ -1249,7 +1249,7 @@ static int unix_socketpair(struct socket *socka, struct socket *sockb)
 }
 
 static void unix_sock_inherit_flags(const struct socket *old,
-				   struct socket *new)
+				    struct socket *new)
 {
 	if (test_bit(SOCK_PASSCRED, &old->flags))
 		set_bit(SOCK_PASSCRED, &new->flags);

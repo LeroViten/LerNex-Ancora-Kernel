@@ -812,7 +812,7 @@ int __kvm_set_memory_region(struct kvm *kvm,
 			GFP_KERNEL);
 	if (!slots)
 		goto out_free;
-		
+
 	/* map new memory slot into the iommu */
 	if (npages) {
 		r = kvm_iommu_map_pages(kvm, &new);
@@ -1667,7 +1667,7 @@ static int kvm_vm_ioctl_create_vcpu(struct kvm *kvm, u32 id)
 {
 	int r;
 	struct kvm_vcpu *vcpu, *v;
-	
+
 	if (id >= KVM_MAX_VCPUS)
 		return -EINVAL;
 

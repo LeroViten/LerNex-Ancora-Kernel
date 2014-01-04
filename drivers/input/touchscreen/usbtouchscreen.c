@@ -1532,7 +1532,7 @@ static int usbtouch_probe(struct usb_interface *intf,
 		usbtouch->data_size = min(usbtouch->data_size,
 					  usb_endpoint_maxp(endpoint));
 	}
-	
+
 	usbtouch->data = usb_alloc_coherent(udev, usbtouch->data_size,
 					    GFP_KERNEL, &usbtouch->data_dma);
 	if (!usbtouch->data)

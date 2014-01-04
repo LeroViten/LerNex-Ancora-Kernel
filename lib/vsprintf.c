@@ -931,7 +931,7 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 				spec.field_width = 2 * sizeof(void *);
 			return string(buf, end, "pK-error", spec);
 		}
-		
+
 		switch (kptr_restrict) {
 		case 0:
 			/* Always print %pK values */
@@ -961,6 +961,7 @@ char *pointer(const char *fmt, char *buf, char *end, void *ptr,
 			break;
 		}
 		break;
+
 	case 'N':
 		switch (fmt[1]) {
 		case 'F':

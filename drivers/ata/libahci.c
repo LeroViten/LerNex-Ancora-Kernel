@@ -1262,7 +1262,7 @@ int ahci_do_softreset(struct ata_link *link, unsigned int *class,
 	rc = ahci_kick_engine(ap);
 	if (rc && rc != -EOPNOTSUPP)
 		ata_link_warn(link, "failed to reset engine (errno=%d)\n", rc);
-	
+
 	/*
 	 * According to AHCI-1.2 9.3.9: if FBS is enable, software shall
 	 * clear PxFBS.EN to '0' prior to issuing software reset to devices
@@ -1312,7 +1312,7 @@ int ahci_do_softreset(struct ata_link *link, unsigned int *class,
 		goto fail;
 	} else
 		*class = ahci_dev_classify(ap);
-		
+
 	/* re-enable FBS if disabled before */
 	if (fbs_disabled)
 		ahci_enable_fbs(ap);

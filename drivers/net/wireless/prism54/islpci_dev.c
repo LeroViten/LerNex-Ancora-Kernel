@@ -812,7 +812,7 @@ static const struct net_device_ops islpci_netdev_ops = {
 };
 
 static struct device_type wlan_type = {
-	.name = "wlan",
+	.name	= "wlan",
 };
 
 struct net_device *

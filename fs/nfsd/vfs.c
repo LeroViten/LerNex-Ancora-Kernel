@@ -303,7 +303,6 @@ commit_metadata(struct svc_fh *fhp)
 static void
 nfsd_sanitize_attrs(struct inode *inode, struct iattr *iap)
 {
-
 	/*
 	 * NFSv2 does not differentiate between "set-[ac]time-to-now"
 	 * which only requires access, and "set-[ac]time-to-X" which
@@ -448,15 +447,15 @@ nfsd_setattr(struct svc_rqst *rqstp, struct svc_fh *fhp, struct iattr *iap,
 		err = nfserr_notsync;
 		goto out_put_write_access;
 	}
-	
+
 	host_err = nfsd_break_lease(inode);
 	if (host_err)
 		goto out_put_write_access_nfserror;
-		
+
 	fh_lock(fhp);
 	host_err = notify_change(dentry, iap);
 	fh_unlock(fhp);
-	
+
 out_put_write_access_nfserror:
 	err = nfserrno(host_err);
 out_put_write_access:
@@ -466,7 +465,6 @@ out_put_write_access:
 		commit_metadata(fhp);
 out:
 	return err;
-
 }
 
 #if defined(CONFIG_NFSD_V2_ACL) || \

@@ -1,4 +1,4 @@
-/* Copyright (c) 2009-2012, Code Aurora Forum. All rights reserved.
+/* Copyright (c) 2009-2012, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -82,6 +82,7 @@
 #include "pm-boot.h"
 #include "spm.h"
 #include "acpuclock.h"
+#include "clock.h"
 #include <mach/dal_axi.h>
 #include <mach/msm_serial_hs.h>
 #include <mach/qdsp5v2/mi2s.h>
@@ -120,7 +121,7 @@
 
 #define MSM_FB_SIZE roundup(MSM_FB_PRIM_BUF_SIZE + MSM_FB_EXT_BUF_SIZE, 4096)
 
-#define MSM_PMEM_ADSP_SIZE		0x2184000
+#define MSM_PMEM_ADSP_SIZE      0x1E00000
 #define MSM_FLUID_PMEM_ADSP_SIZE	0x2800000
 #define PMEM_KERNEL_EBI0_SIZE   0x600000
 #define MSM_PMEM_AUDIO_SIZE     0x200000
@@ -998,7 +999,7 @@ static struct msm_camera_sensor_flash_data flash_vx6953 = {
 };
 
 static struct msm_camera_sensor_platform_info sensor_board_info_vx6953 = {
-	.mount_angle	= 270,
+	.mount_angle	= 0,
 	.cam_vreg = msm_7x30_back_cam_vreg,
 	.num_vreg = ARRAY_SIZE(msm_7x30_back_cam_vreg),
 	.gpio_conf = &msm_7x30_back_cam_gpio_conf,
@@ -4339,7 +4340,7 @@ static int display_common_power(int on)
 	}
 
 	if (quickvx_mddi_client)
-		rc = regulator_set_voltage(mddi_ldo20, 1800000, 1800000);
+		rc = regulator_set_voltage(mddi_ldo20, 1500000, 1800000);
 	else
 		rc = regulator_set_voltage(mddi_ldo20, 1500000, 1500000);
 
@@ -4695,7 +4696,6 @@ static int lcdc_panel_power(int on)
 
 	if (unlikely(!lcdc_power_initialized)) {
 		quickvx_mddi_client = 0;
-		regulator_put(mddi_ldo20);
 		display_common_init();
 		lcdc_power_initialized = 1;
 	}
@@ -7159,9 +7159,7 @@ static struct ion_co_heap_pdata co_ion_pdata = {
  * These heaps are listed in the order they will be allocated.
  * Don't swap the order unless you know what you are doing!
  */
-static struct ion_platform_data ion_pdata = {
-	.nr = MSM_ION_HEAP_NUM,
-	.heaps = {
+struct ion_platform_heap msm7x30_heaps[] = {
 		{
 			.id	= ION_SYSTEM_HEAP_ID,
 			.type	= ION_HEAP_TYPE_SYSTEM,
@@ -7174,7 +7172,6 @@ static struct ion_platform_data ion_pdata = {
 			.type	= ION_HEAP_TYPE_CARVEOUT,
 			.name	= ION_CAMERA_HEAP_NAME,
 			.memory_type = ION_EBI_TYPE,
-			.has_outer_cache = 1,
 			.extra_data = (void *)&co_ion_pdata,
 		},
 		/* PMEM_AUDIO */
@@ -7183,7 +7180,6 @@ static struct ion_platform_data ion_pdata = {
 			.type	= ION_HEAP_TYPE_CARVEOUT,
 			.name	= ION_AUDIO_HEAP_NAME,
 			.memory_type = ION_EBI_TYPE,
-			.has_outer_cache = 1,
 			.extra_data = (void *)&co_ion_pdata,
 		},
 		/* PMEM_MDP = SF */
@@ -7192,11 +7188,14 @@ static struct ion_platform_data ion_pdata = {
 			.type	= ION_HEAP_TYPE_CARVEOUT,
 			.name	= ION_SF_HEAP_NAME,
 			.memory_type = ION_EBI_TYPE,
-			.has_outer_cache = 1,
 			.extra_data = (void *)&co_ion_pdata,
 		},
 #endif
-	}
+};
+
+static struct ion_platform_data ion_pdata = {
+	.nr = MSM_ION_HEAP_NUM,
+	.heaps = msm7x30_heaps,
 };
 
 static struct platform_device ion_dev = {

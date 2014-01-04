@@ -50,16 +50,15 @@ static unsigned char get_dtype(struct super_block *sb, int filetype)
 static int is_dx_dir(struct inode *inode)
 {
 	struct super_block *sb = inode->i_sb;
-	
+
 	if (EXT3_HAS_COMPAT_FEATURE(inode->i_sb,
 		     EXT3_FEATURE_COMPAT_DIR_INDEX) &&
 	    ((EXT3_I(inode)->i_flags & EXT3_INDEX_FL) ||
 	     ((inode->i_size >> sb->s_blocksize_bits) == 1)))
-	     	return 1;
-	     	
+		return 1;
+
 	return 0;
 }
-
 
 int ext3_check_dir_entry (const char * function, struct inode * dir,
 			  struct ext3_dir_entry_2 * de,
@@ -249,7 +248,7 @@ static inline loff_t hash2pos(struct file *filp, __u32 major, __u32 minor)
 {
 	if ((filp->f_mode & FMODE_32BITHASH) ||
 	    (!(filp->f_mode & FMODE_64BITHASH) && is_32bit_api()))
-	    	return major >> 1;
+		return major >> 1;
 	else
 		return ((__u64)(major >> 1) << 32) | (__u64)minor;
 }
@@ -258,7 +257,7 @@ static inline __u32 pos2maj_hash(struct file *filp, loff_t pos)
 {
 	if ((filp->f_mode & FMODE_32BITHASH) ||
 	    (!(filp->f_mode & FMODE_64BITHASH) && is_32bit_api()))
-	    	return (pos << 1) & 0xffffffff;
+		return (pos << 1) & 0xffffffff;
 	else
 		return ((pos >> 32) << 1) & 0xffffffff;
 }
@@ -267,7 +266,7 @@ static inline __u32 pos2min_hash(struct file *filp, loff_t pos)
 {
 	if ((filp->f_mode & FMODE_32BITHASH) ||
 	    (!(filp->f_mode & FMODE_64BITHASH) && is_32bit_api()))
-	    	return 0;
+		return 0;
 	else
 		return pos & 0xffffffff;
 }
@@ -279,7 +278,7 @@ static inline loff_t ext3_get_htree_eof(struct file *filp)
 {
 	if ((filp->f_mode & FMODE_32BITHASH) ||
 	    (!(filp->f_mode & FMODE_64BITHASH) && is_32bit_api()))
-	    	return EXT3_HTREE_EOF_32BIT;
+		return EXT3_HTREE_EOF_32BIT;
 	else
 		return EXT3_HTREE_EOF_64BIT;
 }
@@ -295,16 +294,16 @@ static inline loff_t ext3_get_htree_eof(struct file *filp)
  * the htree directory case.
  *
  * NOTE: offsets obtained *before* ext3_set_inode_flag(dir, EXT3_INODE_INDEX)
- * will be invalid once the directory was converted into a dx directory
+ *       will be invalid once the directory was converted into a dx directory
  */
 loff_t ext3_dir_llseek(struct file *file, loff_t offset, int origin)
 {
 	struct inode *inode = file->f_mapping->host;
 	int dx_dir = is_dx_dir(inode);
-	
+
 	if (likely(dx_dir))
 		return generic_file_llseek_size(file, offset, origin,
-						ext3_get_htree_eof(file));
+					        ext3_get_htree_eof(file));
 	else
 		return generic_file_llseek(file, offset, origin);
 }
@@ -369,7 +368,7 @@ static void free_rb_tree_fname(struct rb_root *root)
 
 
 static struct dir_private_info *ext3_htree_create_dir_info(struct file *filp,
-							  loff_t pos)
+							   loff_t pos)
 {
 	struct dir_private_info *p;
 
@@ -583,10 +582,10 @@ const struct file_operations ext3_dir_operations = {
 	.llseek		= ext3_dir_llseek,
 	.read		= generic_read_dir,
 	.readdir	= ext3_readdir,
-	.unlocked_ioctl	= ext3_ioctl,
+	.unlocked_ioctl = ext3_ioctl,
 #ifdef CONFIG_COMPAT
 	.compat_ioctl	= ext3_compat_ioctl,
 #endif
 	.fsync		= ext3_sync_file,
 	.release	= ext3_release_dir,
-}
+};

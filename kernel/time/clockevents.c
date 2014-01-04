@@ -73,6 +73,7 @@ static u64 cev_delta2ns(unsigned long latch, struct clock_event_device *evt,
 		clc += rnd;
 
 	do_div(clc, evt->mult);
+
 	/* Deltas less than 1usec are pointless noise */
 	return clc > 1000 ? clc : 1000;
 }

@@ -625,7 +625,7 @@ static int __devinit pnv_ioda_configure_pe(struct pnv_phb *phb,
 		pe_err(pe, "OPAL error %ld trying to setup PELT table\n", rc);
 		return -ENXIO;
 	}
-	
+
 	rc = opal_pci_set_peltv(phb->opal_id, pe->pe_number,
 				pe->pe_number, OPAL_ADD_PE_TO_DOMAIN);
 	if (rc)
