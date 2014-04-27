@@ -532,7 +532,14 @@ static int vlan_passthru_hard_header(struct sk_buff *skb, struct net_device *dev
 {
 	struct vlan_dev_priv *vlan = vlan_dev_priv(dev);
 	struct net_device *real_dev = vlan->real_dev;
+<<<<<<< HEAD
 	
+=======
+
+	if (saddr == NULL)
+		saddr = dev->dev_addr;
+
+>>>>>>> ee65010... Squashed update of kernel from 3.4.87 to 3.4.88
 	return dev_hard_header(skb, real_dev, type, daddr, saddr, len);
 }
 
