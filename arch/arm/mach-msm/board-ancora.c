@@ -4462,8 +4462,8 @@ static struct regulator *mddi_lcd;
 static int display_common_init(void)
 {
 	struct regulator_bulk_data regs[2] = {
-		{ .supply = "ldo17", .min_uV = 1800000, .max_uV = 1800000},
-		{ .supply = "ldo15", .min_uV = 3000000, .max_uV = 3000000},
+		{ .supply = "ldo17", .min_uV = 1700000, .max_uV = 1700000},
+		{ .supply = "ldo15", .min_uV = 2800000, .max_uV = 2800000},
 	};
 
 	int rc = 0;
