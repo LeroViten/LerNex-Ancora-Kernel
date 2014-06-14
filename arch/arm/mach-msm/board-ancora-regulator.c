@@ -281,7 +281,7 @@ static struct proccomm_regulator_info msm7x30_pcom_vreg_info[] = {
 	PCOM_VREG_LDO(ldo02, 46, NULL,  3300000,  3300000, 0, -1, 0, 0, 0, 0),
 	PCOM_VREG_LDO(ldo03, 19, NULL,  1800000,  3000000, 0, -1, 0, 0, 0, 0),
 	PCOM_VREG_LDO(ldo04,  9, NULL,  2850000,  2850000, 0, -1, 0, 0, 0, 0),
-	PCOM_VREG_LDO(ldo05, 18, NULL,  2850000,  2850000, 0, -1, 0, 0, 0, 0),
+	PCOM_VREG_LDO(ldo05, 18, NULL,  2100000,  2100000, 0, -1, 0, 0, 0, 0),
 	PCOM_VREG_LDO(ldo06, 16, NULL,  3075000,  3400000, 0, -1, 0, 0, 0, 0),
 	PCOM_VREG_LDO(ldo07, 44, NULL,  1800000,  1800000, 0, -1, 0, 0, 0, 0),
 	PCOM_VREG_LDO(ldo08, 32, NULL,  1800000,  1800000, 0, -1, 0, 0, 0, 0),
